@@ -1,0 +1,6 @@
+@RubacCore_HostAddress = http://localhost:5262
+
+GET {{RubacCore_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,153 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Mvc;
+using OpenIddict.Abstractions;
+using OpenIddict.Server.AspNetCore;
+using RubacCore.Interfaces;
+using static OpenIddict.Abstractions.OpenIddictConstants;
+
+namespace RubacCore.Controllers;
+
+[ApiController]
+public class AuthController : ControllerBase
+{
+    private readonly IAuthService _authService;
+
+    public AuthController(IAuthService authService)
+        => _authService = authService;
+
+    // ── POST /connect/token ────────────────────────────────────────
+    [HttpPost("~/connect/token")]
+    [Produces("application/json")]
+    public async Task<IActionResult> Exchange()
+    {
+        var request = HttpContext.GetOpenIddictServerRequest()
+            ?? throw new InvalidOperationException("OpenIddict request cannot be retrieved.");
+
+        // Password flow
+        if (request.IsPasswordGrantType())
+        {
+            if (!await _authService.ValidateCredentialsAsync(request.Username!, request.Password!))
+                return Forbid(
+                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                    properties: new AuthenticationProperties(new Dictionary<string, string?>
+                    {
+                        [OpenIddictServerAspNetCoreConstants.Properties.Error]
+                            = Errors.InvalidGrant,
+                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription]
+                            = "Invalid credentials."
+                    }));
+
+            var user = await _authService.GetUserByNameAsync(request.Username!);
+            return await BuildSignInResultAsync(user!.Id.ToString(), user.UserName,
+                                                user.Email, user.FirstName, user.LastName,
+                                                user.Roles, request);
+        }
+
+        // Refresh token flow
+        if (request.IsRefreshTokenGrantType())
+        {
+            var result = await HttpContext.AuthenticateAsync(
+                OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+
+            var userId = result.Principal!.GetClaim(Claims.Subject)!;
+            var user   = await _authService.GetUserByIdAsync(userId);
+
+            if (user is null)
+                return Forbid(
+                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                    properties: new AuthenticationProperties(new Dictionary<string, string?>
+                    {
+                        [OpenIddictServerAspNetCoreConstants.Properties.Error]
+                            = Errors.InvalidGrant,
+                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription]
+                            = "Refresh token is no longer valid."
+                    }));
+
+            return await BuildSignInResultAsync(user.Id.ToString(), user.UserName,
+                                                user.Email, user.FirstName, user.LastName,
+                                                user.Roles, request);
+        }
+
+        throw new InvalidOperationException("The specified grant type is not supported.");
+    }
+
+    // ── GET /connect/userinfo ──────────────────────────────────────
+    [HttpGet("~/connect/userinfo")]
+    public async Task<IActionResult> UserInfo()
+    {
+        var userId = User.GetClaim(Claims.Subject)!;
+        var user   = await _authService.GetUserByIdAsync(userId);
+
+        if (user is null)
+            return Challenge(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+
+        return Ok(new
+        {
+            sub            = user.Id.ToString(),
+            name           = $"{user.FirstName} {user.LastName}".Trim(),
+            email          = user.Email,
+            email_verified = true,
+            roles          = user.Roles
+        });
+    }
+
+    // ── Private helpers ────────────────────────────────────────────
+    private Task<IActionResult> BuildSignInResultAsync(
+        string userId, string userName, string email,
+        string? firstName, string? lastName,
+        IEnumerable<string> roles,
+        OpenIddictRequest request)
+    {
+        var identity = new ClaimsIdentity(
+            authenticationType: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+            nameType: Claims.Name,
+            roleType: Claims.Role);
+
+        identity.SetClaim(Claims.Subject,    userId)
+                .SetClaim(Claims.Name,       userName)
+                .SetClaim(Claims.Email,      email)
+                .SetClaim(Claims.GivenName,  firstName)
+                .SetClaim(Claims.FamilyName, lastName);
+
+        identity.SetClaims(Claims.Role, [.. roles]);
+        identity.SetScopes(request.GetScopes());
+
+        foreach (var claim in identity.Claims)
+            claim.SetDestinations(GetDestinations(claim, identity));
+
+        IActionResult result = SignIn(
+            new ClaimsPrincipal(identity),
+            OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+
+        return Task.FromResult(result);
+    }
+
+    private static IEnumerable<string> GetDestinations(Claim claim, ClaimsIdentity identity)
+    {
+        switch (claim.Type)
+        {
+            case Claims.Name:
+            case Claims.GivenName:
+            case Claims.FamilyName:
+                yield return Destinations.AccessToken;
+                if (identity.HasScope(Scopes.Profile))
+                    yield return Destinations.IdentityToken;
+                yield break;
+            case Claims.Email:
+                yield return Destinations.AccessToken;
+                if (identity.HasScope(Scopes.Email))
+                    yield return Destinations.IdentityToken;
+                yield break;
+            case Claims.Role:
+                yield return Destinations.AccessToken;
+                if (identity.HasScope(Scopes.Roles))
+                    yield return Destinations.IdentityToken;
+                yield break;
+            default:
+                yield return Destinations.AccessToken;
+                yield break;
+        }
+    }
+}
