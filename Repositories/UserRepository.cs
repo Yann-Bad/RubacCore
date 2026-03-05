@@ -36,18 +36,43 @@ public class UserRepository : IUserRepository
 
     public async Task<IEnumerable<UserDto>> GetAllAsync()
     {
-        // ToListAsync loads all users first, then GetRolesAsync queries per user.
-        // For large user bases, consider a JOIN-based query in a future iteration.
         var users  = await _userManager.Users.ToListAsync();
         var result = new List<UserDto>();
-
         foreach (var user in users)
         {
             var roles = await _userManager.GetRolesAsync(user);
             result.Add(ToDto(user, roles));
         }
-
         return result;
+    }
+
+    public async Task<PagedResult<UserDto>> GetPagedAsync(int page, int pageSize, string? search)
+    {
+        var query = _userManager.Users.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.ToLower();
+            query = query.Where(u =>
+                (u.UserName != null && u.UserName.ToLower().Contains(s)) ||
+                (u.Email    != null && u.Email.ToLower().Contains(s)));
+        }
+
+        var totalCount = await query.CountAsync();
+        var users = await query
+            .OrderBy(u => u.UserName)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
+        var items = new List<UserDto>();
+        foreach (var user in users)
+        {
+            var roles = await _userManager.GetRolesAsync(user);
+            items.Add(ToDto(user, roles));
+        }
+
+        return new PagedResult<UserDto>(items, totalCount, page, pageSize);
     }
 
     // ── Commands ───────────────────────────────────────────────────

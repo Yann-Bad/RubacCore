@@ -193,3 +193,4 @@ D:\Projets\Dashboard\RubacCore\obj\Debug\net10.0\refint\RubacCore.dll
 D:\Projets\Dashboard\RubacCore\obj\Debug\net10.0\RubacCore.pdb
 D:\Projets\Dashboard\RubacCore\obj\Debug\net10.0\RubacCore.genruntimeconfig.cache
 D:\Projets\Dashboard\RubacCore\obj\Debug\net10.0\ref\RubacCore.dll
+D:\Projets\Dashboard\RubacCore\obj\Debug\net10.0\RubacCore.sourcelink.json

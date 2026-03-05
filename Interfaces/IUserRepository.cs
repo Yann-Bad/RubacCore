@@ -18,6 +18,7 @@ public interface IUserRepository
     // ── Queries ─────────────────────────────────────────────────────────────────────
     Task<UserDto?> GetByIdAsync(long id);
     Task<IEnumerable<UserDto>> GetAllAsync();
+    Task<PagedResult<UserDto>> GetPagedAsync(int page, int pageSize, string? search);
 
     // ── Commands ───────────────────────────────────────────────────────────────────
     Task<UserDto> CreateAsync(RegisterDto dto);

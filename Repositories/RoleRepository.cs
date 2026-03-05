@@ -18,6 +18,29 @@ public class RoleRepository : IRoleRepository
             .Select(r => new RoleDto(r.Id, r.Name!, r.Description, r.Application))
             .ToListAsync();
 
+    public async Task<PagedResult<RoleDto>> GetPagedAsync(int page, int pageSize, string? search)
+    {
+        var query = _roleManager.Roles.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.ToLower();
+            query = query.Where(r =>
+                (r.Name        != null && r.Name.ToLower().Contains(s)) ||
+                (r.Application != null && r.Application.ToLower().Contains(s)));
+        }
+
+        var totalCount = await query.CountAsync();
+        var roles = await query
+            .OrderBy(r => r.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(r => new RoleDto(r.Id, r.Name!, r.Description, r.Application))
+            .ToListAsync();
+
+        return new PagedResult<RoleDto>(roles, totalCount, page, pageSize);
+    }
+
     public async Task<RoleDto?> GetByNameAsync(string name)
     {
         var role = await _roleManager.FindByNameAsync(name);

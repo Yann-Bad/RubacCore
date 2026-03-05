@@ -31,13 +31,14 @@ public class RolesController : ControllerBase
         => _roleRepository = roleRepository;
 
     /// <summary>
-    /// List all role definitions across all applications.
-    /// Each role has an Application field so you can filter in the front-end
-    /// (e.g. show only DashboardCore roles when managing DashboardCore users).
+    /// List roles with server-side pagination and optional search.
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll()
-        => Ok(await _roleRepository.GetAllAsync());
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int     page     = 1,
+        [FromQuery] int     pageSize = 10,
+        [FromQuery] string? search   = null)
+        => Ok(await _roleRepository.GetPagedAsync(page, pageSize, search));
 
     /// <summary>
     /// Get a single role by its normalised name.

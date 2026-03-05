@@ -53,10 +53,31 @@ public record UpdateUserDto(
 );
 
 /// <summary>
+/// Payload for PATCH /api/users/{id}/active.
+/// A wrapper object is required because ASP.NET Core's JSON binder cannot
+/// deserialize a raw primitive (true/false) into a [FromBody] parameter.
+/// </summary>
+public record SetActiveDto(bool IsActive);
+
+/// <summary>
 /// Payload for a SuperAdmin to reset any user's password, or for a user
 /// changing their own (CurrentPassword is validated only in self-service flow).
 /// </summary>
 public record ChangePasswordDto(
     string? CurrentPassword,   // null when a SuperAdmin resets for someone else
     string NewPassword
+);
+
+/// <summary>
+/// Generic wrapper returned by all paginated list endpoints.
+/// </summary>
+/// <param name="Items">The items on the current page.</param>
+/// <param name="TotalCount">Total number of matching records across all pages.</param>
+/// <param name="Page">Current 1-based page number.</param>
+/// <param name="PageSize">Number of items per page.</param>
+public record PagedResult<T>(
+    IEnumerable<T> Items,
+    int TotalCount,
+    int Page,
+    int PageSize
 );

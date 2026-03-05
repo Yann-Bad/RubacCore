@@ -58,6 +58,14 @@ builder.Services.AddOpenIddict()
         options.AddDevelopmentEncryptionCertificate()
                .AddDevelopmentSigningCertificate();
 
+        // Emit access tokens as plain signed JWTs (JWS) rather than encrypted
+        // JWEs. This is required for resource servers (e.g. DashboardCore) to
+        // validate tokens using standard JWT Bearer without OpenIddict's SDK.
+        // The token is still signed — tamper-proof — but its payload is
+        // readable. Acceptable for internal APIs; add encryption in production
+        // if the token payload is considered sensitive.
+        options.DisableAccessTokenEncryption();
+
         options.UseAspNetCore()
                .EnableTokenEndpointPassthrough()
                .EnableAuthorizationEndpointPassthrough()
@@ -78,6 +86,9 @@ builder.Services.AddOpenIddict()
     {
         options.UseLocalServer();
         options.UseAspNetCore();
+        // Only accept tokens that carry the rubac_api audience.
+        // This audience is added to tokens when the rubac scope is requested.
+        options.AddAudiences("rubac_api");
     });
 
 // ── 4. Repositories & Services (separated concerns) ────────────────
@@ -99,7 +110,19 @@ builder.Services.AddOpenApi();
 //  The auth server itself must be protected. Without this, any authenticated
 //  user could call GET /api/users and list every account in the system.
 //  Only SuperAdmin should manage users and roles.
-builder.Services.AddAuthentication(OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
+// AddIdentity (step 2) internally sets DefaultAuthenticateScheme and
+// DefaultChallengeScheme to Identity.Application (cookies). Calling
+// AddAuthentication(scheme) here only sets DefaultScheme, which is used
+// as fallback ONLY when the specific Authenticate/Challenge schemes are null.
+// We must explicitly override all four to make [Authorize] on API controllers
+// use OpenIddict bearer token validation instead of cookie auth.
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme            = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+    options.DefaultAuthenticateScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme   = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+    options.DefaultForbidScheme      = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+});
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy(Policies.ManageUsers, policy =>
@@ -120,8 +143,10 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFront", policy =>
         policy
             .WithOrigins(
-                "http://localhost:4200",   // Angular dev (ng serve)
-                "https://localhost:4200"   // Angular dev (SSL)
+                "http://localhost:4200",   // Angular DashboardFront (ng serve)
+                "https://localhost:4200",
+                "http://localhost:4300",   // Angular RulesBacAdmin (ng serve)
+                "https://localhost:4300"
             )
             .AllowAnyMethod()
             .AllowAnyHeader()

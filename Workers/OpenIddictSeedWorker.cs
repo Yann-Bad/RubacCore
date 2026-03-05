@@ -57,9 +57,31 @@ public class OpenIddictSeedWorker : IHostedService
         IOpenIddictScopeManager manager,
         CancellationToken cancellationToken)
     {
-        // "roles" — adds role claims to the access token.
-        // NOT a built-in OIDC scope → must have a row in OpenIddictScopes.
-        // Used by AuthController.GetDestinations() via identity.HasScope(Scopes.Roles).
+        // ── OpenIddict scope validation rules ──────────────────────────────
+        // Every scope a client requests is validated in two steps:
+        //   1. The client must have Permissions.Prefixes.Scope + "xxx" permission.
+        //   2. The scope must be "supported" — either built-in OR present in
+        //      the OpenIddictScopes table.
+        //
+        // Built-in (no DB row needed): openid, offline_access
+        // Everything else — including standard OIDC scopes like profile and
+        // email — requires a row in OpenIddictScopes even if they look standard.
+
+        // "profile" — name, given_name, family_name claims
+        await UpsertScopeAsync(manager, new OpenIddictScopeDescriptor
+        {
+            Name        = "profile",
+            DisplayName = "User profile",
+        }, cancellationToken);
+
+        // "email" — email claim
+        await UpsertScopeAsync(manager, new OpenIddictScopeDescriptor
+        {
+            Name        = "email",
+            DisplayName = "Email address",
+        }, cancellationToken);
+
+        // "roles" — role claims in the access token
         await UpsertScopeAsync(manager, new OpenIddictScopeDescriptor
         {
             Name        = "roles",
@@ -69,11 +91,21 @@ public class OpenIddictSeedWorker : IHostedService
         // "dashboard" — grants access to DashboardCore.
         // Resources becomes the "aud" claim in the token.
         // DashboardCore validates it via: options.AddAudiences("dashboard_api")
-        await UpsertScopeAsync(manager, new OpenIddictScopeDescriptor
+        await ForceRecreateScopeAsync(manager, new OpenIddictScopeDescriptor
         {
             Name        = "dashboard",
             DisplayName = "Dashboard API access",
             Resources   = { "dashboard_api" }
+        }, cancellationToken);
+
+        // "rubac" — grants access to RubacCore's own management API.
+        // Without this, rubac-admin tokens have no aud claim and
+        // OpenIddict's UseLocalServer() validation rejects them with 401.
+        await ForceRecreateScopeAsync(manager, new OpenIddictScopeDescriptor
+        {
+            Name        = "rubac",
+            DisplayName = "RubacCore API access",
+            Resources   = { "rubac_api" }
         }, cancellationToken);
     }
 
@@ -137,6 +169,27 @@ public class OpenIddictSeedWorker : IHostedService
                 Permissions.Prefixes.Scope + "offline_access", // enables refresh tokens
             }
         }, cancellationToken);
+
+        // ── rubac-admin (RulesBacAdmin SPA — public, password + refresh) ────
+        await RecreateAppAsync(manager, new OpenIddictApplicationDescriptor
+        {
+            ClientId    = "rubac-admin",
+            ClientType  = ClientTypes.Public,
+            DisplayName = "RulesBac Admin Frontend",
+            Permissions =
+            {
+                Permissions.Endpoints.Token,
+                Permissions.Endpoints.Logout,
+                Permissions.GrantTypes.Password,
+                Permissions.GrantTypes.RefreshToken,
+                Permissions.Prefixes.Scope + "openid",
+                Permissions.Scopes.Profile,
+                Permissions.Scopes.Email,
+                Permissions.Scopes.Roles,
+                Permissions.Prefixes.Scope + "rubac",         // rubac_api audience in the token
+                Permissions.Prefixes.Scope + "offline_access",
+            }
+        }, cancellationToken);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────
@@ -145,6 +198,7 @@ public class OpenIddictSeedWorker : IHostedService
     /// Creates the scope if it doesn't exist, updates it if it does.
     /// Safe to use with PopulateAsync because scopes have no required fields
     /// that can be accidentally nulled out (unlike ClientType on applications).
+    /// Do NOT use this for scopes that have Resources — use ForceRecreateScopeAsync.
     /// </summary>
     private async Task UpsertScopeAsync(
         IOpenIddictScopeManager manager,
@@ -163,6 +217,27 @@ public class OpenIddictSeedWorker : IHostedService
             await manager.UpdateAsync(existing, cancellationToken);
             _logger.LogInformation("[OpenIddict] Updated scope: {Name}", descriptor.Name);
         }
+    }
+
+    /// <summary>
+    /// Deletes the scope if it exists, then recreates it from the descriptor.
+    /// Use this instead of UpsertScopeAsync for scopes that carry Resources,
+    /// because PopulateAsync+UpdateAsync does not reliably update the Resources
+    /// JSON column when the row was originally created without Resources.
+    /// </summary>
+    private async Task ForceRecreateScopeAsync(
+        IOpenIddictScopeManager manager,
+        OpenIddictScopeDescriptor descriptor,
+        CancellationToken cancellationToken)
+    {
+        var existing = await manager.FindByNameAsync(descriptor.Name!, cancellationToken);
+        if (existing is not null)
+        {
+            await manager.DeleteAsync(existing, cancellationToken);
+            _logger.LogInformation("[OpenIddict] Deleted scope for recreation: {Name}", descriptor.Name);
+        }
+        await manager.CreateAsync(descriptor, cancellationToken);
+        _logger.LogInformation("[OpenIddict] Created scope: {Name}", descriptor.Name);
     }
 
     /// <summary>

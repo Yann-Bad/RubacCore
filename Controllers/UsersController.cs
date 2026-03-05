@@ -35,12 +35,15 @@ public class UsersController : ControllerBase
     // ── Queries (SuperAdmin only) ──────────────────────────────────────────────
 
     /// <summary>
-    /// List all users. SuperAdmin only — exposes every account in the system.
+    /// List users with server-side pagination and optional search.
     /// </summary>
     [HttpGet]
     [Authorize(Policy = Policies.ManageUsers)] // ← level 2: SuperAdmin only
-    public async Task<IActionResult> GetAll()
-        => Ok(await _userRepository.GetAllAsync());
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int     page     = 1,
+        [FromQuery] int     pageSize = 10,
+        [FromQuery] string? search   = null)
+        => Ok(await _userRepository.GetPagedAsync(page, pageSize, search));
 
     /// <summary>
     /// Get a single user by id. SuperAdmin can fetch anyone;
@@ -107,12 +110,12 @@ public class UsersController : ControllerBase
     /// </summary>
     [HttpPatch("{id:long}/active")]
     [Authorize(Policy = Policies.ManageUsers)]
-    public async Task<IActionResult> SetActive(long id, [FromBody] bool isActive)
+    public async Task<IActionResult> SetActive(long id, [FromBody] SetActiveDto dto)
     {
-        var success = await _userRepository.SetActiveAsync(id, isActive);
+        var success = await _userRepository.SetActiveAsync(id, dto.IsActive);
         if (!success) return NotFound();
 
-        return Ok(new { message = $"User {(isActive ? "activated" : "deactivated")} successfully." });
+        return Ok(new { message = $"User {(dto.IsActive ? "activated" : "deactivated")} successfully." });
     }
 
     // ── Role assignment (SuperAdmin only) ──────────────────────────────────────

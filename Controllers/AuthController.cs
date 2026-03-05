@@ -12,10 +12,14 @@ namespace RubacCore.Controllers;
 [ApiController]
 public class AuthController : ControllerBase
 {
-    private readonly IAuthService _authService;
+    private readonly IAuthService              _authService;
+    private readonly IOpenIddictScopeManager   _scopeManager;
 
-    public AuthController(IAuthService authService)
-        => _authService = authService;
+    public AuthController(IAuthService authService, IOpenIddictScopeManager scopeManager)
+    {
+        _authService  = authService;
+        _scopeManager = scopeManager;
+    }
 
     // ── POST /connect/token ────────────────────────────────────────
     [HttpPost("~/connect/token")]
@@ -94,7 +98,7 @@ public class AuthController : ControllerBase
     }
 
     // ── Private helpers ────────────────────────────────────────────
-    private Task<IActionResult> BuildSignInResultAsync(
+    private async Task<IActionResult> BuildSignInResultAsync(
         string userId, string userName, string email,
         string? firstName, string? lastName,
         IEnumerable<string> roles,
@@ -114,14 +118,20 @@ public class AuthController : ControllerBase
         identity.SetClaims(Claims.Role, [.. roles]);
         identity.SetScopes(request.GetScopes());
 
+        // Resolve the resource servers (audiences) for the granted scopes.
+        // Without this, the access token has no "aud" claim and any resource
+        // server that calls AddAudiences() will reject it with 401.
+        var resources = new List<string>();
+        await foreach (var resource in _scopeManager.ListResourcesAsync(identity.GetScopes()))
+            resources.Add(resource);
+        identity.SetResources(resources);
+
         foreach (var claim in identity.Claims)
             claim.SetDestinations(GetDestinations(claim, identity));
 
-        IActionResult result = SignIn(
+        return SignIn(
             new ClaimsPrincipal(identity),
             OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
-
-        return Task.FromResult(result);
     }
 
     private static IEnumerable<string> GetDestinations(Claim claim, ClaimsIdentity identity)
