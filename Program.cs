@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using OpenIddict.Validation.AspNetCore;
 using RubacCore.Authorization;
 using RubacCore.Data;
+using RubacCore.Hubs;
 using RubacCore.Interfaces;
 using RubacCore.Models;
 using RubacCore.Repositories;
@@ -92,16 +93,29 @@ builder.Services.AddOpenIddict()
     });
 
 // ── 4. Repositories & Services (separated concerns) ────────────────
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IRoleRepository, RoleRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IClientService, ClientService>();
+builder.Services.AddScoped<ICentreService, CentreService>();
+builder.Services.AddScoped<ILdapService, LdapService>();
+builder.Services.Configure<LdapSettings>(builder.Configuration.GetSection("Ldap"));
+builder.Services.AddSingleton<IPresenceService, PresenceService>();
+
+// ── 4b. SignalR ────────────────────────────────────────────────────
+builder.Services.AddSignalR();
 
 // ── 5. Seed workers ────────────────────────────────────────────────
 builder.Services.AddHostedService<OpenIddictSeedWorker>(); // registers OAuth2 apps & scopes
 builder.Services.AddHostedService<DataSeedWorker>();       // seeds default roles & admin user
 
 // ── 6. Controllers & OpenAPI ───────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(opts =>
+        opts.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 
 // ── 7. Authorization policies (guards RubacCore’s own management API) ──────
@@ -160,9 +174,24 @@ if (app.Environment.IsDevelopment())
 // CORS must come BEFORE UseAuthentication — otherwise the browser's
 // preflight OPTIONS request is rejected before the CORS headers are added.
 app.UseCors("AllowFront");
+
+// SignalR WebSocket connections cannot set HTTP headers, so @microsoft/signalr
+// passes the access token as ?access_token=… query param. Promote it to the
+// Authorization header before the authentication middleware sees the request.
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.StartsWithSegments("/hubs") &&
+        ctx.Request.Query.TryGetValue("access_token", out var token))
+    {
+        ctx.Request.Headers.Authorization = $"Bearer {token}";
+    }
+    await next();
+});
+
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<PresenceHub>("/hubs/presence");
 
 app.Run();

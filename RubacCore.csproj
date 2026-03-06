@@ -17,6 +17,8 @@
     <!-- OpenIddict -->
     <PackageReference Include="OpenIddict.AspNetCore" Version="5.5.0" />
     <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="5.5.0" />
+    <!-- LDAP / Active Directory -->
+    <PackageReference Include="System.DirectoryServices.Protocols" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

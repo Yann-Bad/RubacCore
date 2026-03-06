@@ -77,6 +77,10 @@
             "OpenIddict.EntityFrameworkCore": {
               "target": "Package",
               "version": "[5.5.0, )"
+            },
+            "System.DirectoryServices.Protocols": {
+              "target": "Package",
+              "version": "[8.0.0, )"
             }
           },
           "imports": [

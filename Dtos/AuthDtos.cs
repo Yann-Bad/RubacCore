@@ -60,6 +60,18 @@ public record UpdateUserDto(
 public record SetActiveDto(bool IsActive);
 
 /// <summary>
+/// Payload for PATCH /api/users/{id}/password.
+/// Used by SuperAdmin to force-reset any user's password without knowing the current one.
+/// </summary>
+public record ResetPasswordDto(string NewPassword);
+
+/// <summary>
+/// Payload for PUT /api/roles/{name}.
+/// Name cannot be changed (it is the identity key). Only metadata fields are editable.
+/// </summary>
+public record UpdateRoleDto(string? Description, string? Application);
+
+/// <summary>
 /// Payload for a SuperAdmin to reset any user's password, or for a user
 /// changing their own (CurrentPassword is validated only in self-service flow).
 /// </summary>
@@ -80,4 +92,44 @@ public record PagedResult<T>(
     int TotalCount,
     int Page,
     int PageSize
+);
+
+/// <summary>Read model returned by GET /api/audit.</summary>
+public record AuditLogDto(
+    long             Id,
+    DateTimeOffset   OccurredAt,
+    string           Actor,
+    string           Entity,
+    string           Action,
+    string?          TargetId,
+    string?          Details
+);
+
+// ── OAuth2 client DTOs ─────────────────────────────────────────────────────
+
+/// <summary>Read model returned by GET /api/clients.</summary>
+public record ClientDto(
+    string   ClientId,
+    string?  DisplayName,
+    string   ClientType,   // "public" | "confidential"
+    string[] Permissions,
+    string[] RedirectUris
+);
+
+/// <summary>Payload for POST /api/clients.</summary>
+public record CreateClientDto(
+    string   ClientId,
+    string?  DisplayName,
+    string   ClientType,
+    string?  ClientSecret,   // required when ClientType == "confidential"
+    string[] Permissions,
+    string[] RedirectUris
+);
+
+/// <summary>Payload for PUT /api/clients/{clientId}.</summary>
+public record UpdateClientDto(
+    string?  DisplayName,
+    string?  ClientSecret,   // null = keep existing; non-null = update
+    string[] Permissions,
+    string[] RedirectUris
 );

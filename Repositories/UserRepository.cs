@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using RubacCore.Dtos;
@@ -19,9 +20,21 @@ namespace RubacCore.Repositories;
 public class UserRepository : IUserRepository
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IAuditService                _audit;
+    private readonly IHttpContextAccessor         _http;
 
-    public UserRepository(UserManager<ApplicationUser> userManager)
-        => _userManager = userManager;
+    public UserRepository(
+        UserManager<ApplicationUser> userManager,
+        IAuditService audit,
+        IHttpContextAccessor http)
+    {
+        _userManager = userManager;
+        _audit       = audit;
+        _http        = http;
+    }
+
+    private string Actor =>
+        _http.HttpContext?.User.Identity?.Name ?? "system";
 
     // ── Queries ────────────────────────────────────────────────────
 
@@ -46,7 +59,7 @@ public class UserRepository : IUserRepository
         return result;
     }
 
-    public async Task<PagedResult<UserDto>> GetPagedAsync(int page, int pageSize, string? search)
+    public async Task<PagedResult<UserDto>> GetPagedAsync(int page, int pageSize, string? search, string? sortBy = "userName", string? sortDir = "asc")
     {
         var query = _userManager.Users.AsQueryable();
 
@@ -58,9 +71,17 @@ public class UserRepository : IUserRepository
                 (u.Email    != null && u.Email.ToLower().Contains(s)));
         }
 
+        bool desc = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase);
+        query = sortBy?.ToLower() switch
+        {
+            "email"     => desc ? query.OrderByDescending(u => u.Email)    : query.OrderBy(u => u.Email),
+            "firstname" => desc ? query.OrderByDescending(u => u.FirstName) : query.OrderBy(u => u.FirstName),
+            "lastname"  => desc ? query.OrderByDescending(u => u.LastName)  : query.OrderBy(u => u.LastName),
+            _           => desc ? query.OrderByDescending(u => u.UserName)  : query.OrderBy(u => u.UserName),
+        };
+
         var totalCount = await query.CountAsync();
         var users = await query
-            .OrderBy(u => u.UserName)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync();
@@ -92,6 +113,9 @@ public class UserRepository : IUserRepository
             throw new InvalidOperationException(
                 string.Join(", ", result.Errors.Select(e => e.Description)));
 
+        await _audit.LogAsync(Actor, "User", "user.created",
+            user.Id.ToString(), $"Username: {user.UserName}, Email: {user.Email}");
+
         return ToDto(user, []);
     }
 
@@ -122,6 +146,9 @@ public class UserRepository : IUserRepository
             throw new InvalidOperationException(
                 string.Join(", ", result.Errors.Select(e => e.Description)));
 
+        await _audit.LogAsync(Actor, "User", "user.updated",
+            id.ToString(), $"Username: {user.UserName}");
+
         var roles = await _userManager.GetRolesAsync(user);
         return ToDto(user, roles);
     }
@@ -145,7 +172,52 @@ public class UserRepository : IUserRepository
 
         user.IsActive = isActive;
         var result = await _userManager.UpdateAsync(user);
+        if (result.Succeeded)
+            await _audit.LogAsync(Actor, "User", isActive ? "user.activated" : "user.deactivated",
+                id.ToString(), $"Username: {user.UserName}");
         return result.Succeeded;
+    }
+
+    /// <summary>
+    /// Force-reset a user's password without requiring their current password.
+    /// Uses Identity's built-in token-based reset flow so all password validators
+    /// (length, complexity) still run — the token is generated and redeemed immediately,
+    /// no email round-trip is needed for an admin-driven reset.
+    /// </summary>
+    public async Task<bool> ResetPasswordAsync(long id, string newPassword)
+    {
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user is null) return false;
+
+        var token  = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
+        if (!result.Succeeded)
+            throw new InvalidOperationException(
+                string.Join(", ", result.Errors.Select(e => e.Description)));
+
+        await _audit.LogAsync(Actor, "User", "password.reset",
+            id.ToString(), $"Username: {user.UserName}");
+        return true;
+    }
+
+    /// <summary>
+    /// Self-service password change: verifies the current password first,
+    /// then updates to the new one. Uses ChangePasswordAsync which runs all
+    /// Identity password validators (length, complexity).
+    /// </summary>
+    public async Task<bool> ChangePasswordAsync(long id, string currentPassword, string newPassword)
+    {
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user is null) return false;
+
+        var result = await _userManager.ChangePasswordAsync(user, currentPassword, newPassword);
+        if (!result.Succeeded)
+            throw new InvalidOperationException(
+                string.Join(", ", result.Errors.Select(e => e.Description)));
+
+        await _audit.LogAsync(Actor, "User", "password.changed",
+            id.ToString(), $"Username: {user.UserName}");
+        return true;
     }
 
     // ── Role assignment ────────────────────────────────────────────
@@ -156,6 +228,9 @@ public class UserRepository : IUserRepository
         if (user is null) return false;
 
         var result = await _userManager.AddToRoleAsync(user, roleName);
+        if (result.Succeeded)
+            await _audit.LogAsync(Actor, "User", "role.assigned",
+                userId.ToString(), $"Username: {user.UserName}, Role: {roleName}");
         return result.Succeeded;
     }
 
@@ -165,6 +240,21 @@ public class UserRepository : IUserRepository
         if (user is null) return false;
 
         var result = await _userManager.RemoveFromRoleAsync(user, roleName);
+        if (result.Succeeded)
+            await _audit.LogAsync(Actor, "User", "role.removed",
+                userId.ToString(), $"Username: {user.UserName}, Role: {roleName}");
+        return result.Succeeded;
+    }
+
+    public async Task<bool> DeleteAsync(long id)
+    {
+        var user = await _userManager.FindByIdAsync(id.ToString());
+        if (user is null) return false;
+
+        var result = await _userManager.DeleteAsync(user);
+        if (result.Succeeded)
+            await _audit.LogAsync(Actor, "User", "user.deleted",
+                id.ToString(), $"Username: {user.UserName}");
         return result.Succeeded;
     }
 

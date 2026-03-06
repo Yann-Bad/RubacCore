@@ -17,6 +17,10 @@ public class RubacDbContext : IdentityDbContext<
 {
     public RubacDbContext(DbContextOptions<RubacDbContext> options) : base(options) { }
 
+    public DbSet<AuditLog>    AuditLogs   { get; set; } = null!;
+    public DbSet<Centre>      Centres     { get; set; } = null!;
+    public DbSet<UserCentre>  UserCentres { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -29,6 +33,8 @@ public class RubacDbContext : IdentityDbContext<
         builder.Entity<IdentityUserLogin<long>>().ToTable("UserLogins");
         builder.Entity<IdentityRoleClaim<long>>().ToTable("RoleClaims");
         builder.Entity<IdentityUserToken<long>>().ToTable("UserTokens");
+        builder.Entity<AuditLog>().ToTable("AuditLogs")
+            .HasIndex(a => a.OccurredAt);
 
         // ── UserRole navigations ───────────────────────────────────
         builder.Entity<ApplicationUserRole>(b =>
@@ -40,6 +46,35 @@ public class RubacDbContext : IdentityDbContext<
             b.HasOne(ur => ur.Role)
              .WithMany(r => r.UserRoles)
              .HasForeignKey(ur => ur.RoleId);
+        });
+
+        // ── Centre hierarchy (self-referencing tree) ───────────────
+        builder.Entity<Centre>(b =>
+        {
+            b.ToTable("Centres");
+            b.HasIndex(c => c.Code).IsUnique();
+            b.Property(c => c.SubdivisionAdministrative)
+             .HasConversion<string>();
+
+            b.HasOne(c => c.Parent)
+             .WithMany(c => c.Children)
+             .HasForeignKey(c => c.ParentId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── UserCentre junction ────────────────────────────────────
+        builder.Entity<UserCentre>(b =>
+        {
+            b.ToTable("UserCentres");
+            b.HasKey(uc => new { uc.UserId, uc.CentreId });
+
+            b.HasOne(uc => uc.User)
+             .WithMany(u => u.UserCentres)
+             .HasForeignKey(uc => uc.UserId);
+
+            b.HasOne(uc => uc.Centre)
+             .WithMany(c => c.UserCentres)
+             .HasForeignKey(uc => uc.CentreId);
         });
     }
 }

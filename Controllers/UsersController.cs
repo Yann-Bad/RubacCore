@@ -42,8 +42,10 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> GetAll(
         [FromQuery] int     page     = 1,
         [FromQuery] int     pageSize = 10,
-        [FromQuery] string? search   = null)
-        => Ok(await _userRepository.GetPagedAsync(page, pageSize, search));
+        [FromQuery] string? search   = null,
+        [FromQuery] string? sortBy   = "userName",
+        [FromQuery] string? sortDir  = "asc")
+        => Ok(await _userRepository.GetPagedAsync(page, pageSize, search, sortBy, sortDir));
 
     /// <summary>
     /// Get a single user by id. SuperAdmin can fetch anyone;
@@ -118,6 +120,26 @@ public class UsersController : ControllerBase
         return Ok(new { message = $"User {(dto.IsActive ? "activated" : "deactivated")} successfully." });
     }
 
+    /// <summary>
+    /// Force-reset a user's password (SuperAdmin action, no current-password required).
+    /// Identity's password validators still run — weak passwords are rejected with 400.
+    /// </summary>
+    [HttpPatch("{id:long}/password")]
+    [Authorize(Policy = Policies.ManageUsers)]
+    public async Task<IActionResult> ResetPassword(long id, [FromBody] ResetPasswordDto dto)
+    {
+        try
+        {
+            var success = await _userRepository.ResetPasswordAsync(id, dto.NewPassword);
+            if (!success) return NotFound();
+            return Ok(new { message = "Password reset successfully." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     // ── Role assignment (SuperAdmin only) ──────────────────────────────────────
 
     /// <summary>
@@ -147,6 +169,19 @@ public class UsersController : ControllerBase
         return success ? Ok($"Role '{roleName}' removed.") : NotFound("User not found.");
     }
 
+    /// <summary>
+    /// Permanently delete a user account and all their Identity data.
+    /// This is irreversible — use PATCH /active to deactivate instead for recoverable disabling.
+    /// Only SuperAdmin can hard-delete.
+    /// </summary>
+    [HttpDelete("{id:long}")]
+    [Authorize(Policy = Policies.ManageUsers)]
+    public async Task<IActionResult> Delete(long id)
+    {
+        var success = await _userRepository.DeleteAsync(id);
+        return success ? NoContent() : NotFound();
+    }
+
     // ── Self-service (any authenticated user) ───────────────────────────────────
 
     /// <summary>
@@ -164,5 +199,54 @@ public class UsersController : ControllerBase
 
         var user = await _userRepository.GetByIdAsync(long.Parse(userId));
         return user is null ? NotFound() : Ok(user);
+    }
+
+    /// <summary>
+    /// Update the calling user's own profile fields (name, email).
+    /// Uses the same UpdateUserDto as the admin endpoint — just scoped to self.
+    /// </summary>
+    [HttpPut("me")]
+    [Authorize(Policy = Policies.SelfService)]
+    public async Task<IActionResult> UpdateMe(UpdateUserDto dto)
+    {
+        var userId = User.GetClaim(Claims.Subject);
+        if (userId is null) return Unauthorized();
+
+        try
+        {
+            var user = await _userRepository.UpdateAsync(long.Parse(userId), dto);
+            return user is null ? NotFound() : Ok(user);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Self-service password change. CurrentPassword is always required here
+    /// (unlike the admin-only PATCH /{id}/password which skips it).
+    /// </summary>
+    [HttpPatch("me/password")]
+    [Authorize(Policy = Policies.SelfService)]
+    public async Task<IActionResult> ChangeMyPassword([FromBody] ChangePasswordDto dto)
+    {
+        var userId = User.GetClaim(Claims.Subject);
+        if (userId is null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(dto.CurrentPassword))
+            return BadRequest(new { error = "Le mot de passe actuel est requis." });
+
+        try
+        {
+            var success = await _userRepository.ChangePasswordAsync(
+                long.Parse(userId), dto.CurrentPassword, dto.NewPassword);
+            if (!success) return NotFound();
+            return Ok(new { message = "Mot de passe modifié avec succès." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

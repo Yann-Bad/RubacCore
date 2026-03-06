@@ -50,8 +50,10 @@ public class DataSeedWorker : IHostedService
         // under Application = "Dashboard" to make that explicit.
         var roles = new[]
         {
-            // Cross-application — can manage users and roles in RubacCore itself
-            new ApplicationRole { Name = "SuperAdmin",  Description = "Manages users, roles and OAuth2 clients in RubacCore", Application = "RubacCore"   },
+            // Application = null → included in tokens for ANY client.
+            // SuperAdmin manages the auth server itself; scoping it to "RubacCore"
+            // would make GetRolesForClientAsync strip it from rubac-admin tokens.
+            new ApplicationRole { Name = "SuperAdmin",  Description = "Manages users, roles and OAuth2 clients in RubacCore", Application = null },
 
             // Dashboard suite roles — enforced server-side by DashboardCore policies
             // AND client-side by Angular guards / template conditionals.

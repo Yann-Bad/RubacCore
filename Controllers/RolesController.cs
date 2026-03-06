@@ -37,8 +37,10 @@ public class RolesController : ControllerBase
     public async Task<IActionResult> GetAll(
         [FromQuery] int     page     = 1,
         [FromQuery] int     pageSize = 10,
-        [FromQuery] string? search   = null)
-        => Ok(await _roleRepository.GetPagedAsync(page, pageSize, search));
+        [FromQuery] string? search   = null,
+        [FromQuery] string? sortBy   = "name",
+        [FromQuery] string? sortDir  = "asc")
+        => Ok(await _roleRepository.GetPagedAsync(page, pageSize, search, sortBy, sortDir));
 
     /// <summary>
     /// Get a single role by its normalised name.
@@ -87,5 +89,24 @@ public class RolesController : ControllerBase
     {
         var success = await _roleRepository.DeleteAsync(name);
         return success ? Ok($"Role '{name}' deleted.") : NotFound();
+    }
+
+    /// <summary>
+    /// Update a role's description and/or application label.
+    /// The role name is the stable identity key and cannot be changed here
+    /// (that would break all role-checks referencing it by name).
+    /// </summary>
+    [HttpPut("{name}")]
+    public async Task<IActionResult> Update(string name, UpdateRoleDto dto)
+    {
+        try
+        {
+            var role = await _roleRepository.UpdateAsync(name, dto);
+            return role is null ? NotFound() : Ok(role);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

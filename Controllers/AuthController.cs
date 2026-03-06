@@ -43,10 +43,12 @@ public class AuthController : ControllerBase
                             = "Invalid credentials."
                     }));
 
-            var user = await _authService.GetUserByNameAsync(request.Username!);
-            return await BuildSignInResultAsync(user!.Id.ToString(), user.UserName,
+            var user  = await _authService.GetUserByNameAsync(request.Username!);
+            var roles = await _authService.GetRolesForClientAsync(user!.Id, request.ClientId!);
+            var (centrePrimary, centres) = await _authService.GetUserCentresAsync(user.Id);
+            return await BuildSignInResultAsync(user.Id.ToString(), user.UserName,
                                                 user.Email, user.FirstName, user.LastName,
-                                                user.Roles, request);
+                                                roles, centrePrimary, centres, request);
         }
 
         // Refresh token flow
@@ -69,9 +71,13 @@ public class AuthController : ControllerBase
                             = "Refresh token is no longer valid."
                     }));
 
+            // Re-evaluate roles on every refresh so permission changes take
+            // effect without requiring a full re-login.
+            var roles = await _authService.GetRolesForClientAsync(user.Id, request.ClientId!);
+            var (centrePrimary, centres) = await _authService.GetUserCentresAsync(user.Id);
             return await BuildSignInResultAsync(user.Id.ToString(), user.UserName,
                                                 user.Email, user.FirstName, user.LastName,
-                                                user.Roles, request);
+                                                roles, centrePrimary, centres, request);
         }
 
         throw new InvalidOperationException("The specified grant type is not supported.");
@@ -102,6 +108,7 @@ public class AuthController : ControllerBase
         string userId, string userName, string email,
         string? firstName, string? lastName,
         IEnumerable<string> roles,
+        string? centrePrimary, IEnumerable<string> centres,
         OpenIddictRequest request)
     {
         var identity = new ClaimsIdentity(
@@ -114,6 +121,13 @@ public class AuthController : ControllerBase
                 .SetClaim(Claims.Email,      email)
                 .SetClaim(Claims.GivenName,  firstName)
                 .SetClaim(Claims.FamilyName, lastName);
+
+        if (centrePrimary is not null)
+            identity.SetClaim("centre_primary", centrePrimary);
+
+        var centreList = centres.ToList();
+        if (centreList.Count > 0)
+            identity.SetClaims("centres", [.. centreList]);
 
         identity.SetClaims(Claims.Role, [.. roles]);
         identity.SetScopes(request.GetScopes());
@@ -154,6 +168,10 @@ public class AuthController : ControllerBase
                 yield return Destinations.AccessToken;
                 if (identity.HasScope(Scopes.Roles))
                     yield return Destinations.IdentityToken;
+                yield break;
+            case "centre_primary":
+            case "centres":
+                yield return Destinations.AccessToken;
                 yield break;
             default:
                 yield return Destinations.AccessToken;
