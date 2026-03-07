@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RubacCore.Data;
 
@@ -11,9 +12,11 @@ using RubacCore.Data;
 namespace RubacCore.Migrations
 {
     [DbContext(typeof(RubacDbContext))]
-    partial class RubacDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260306161507_AddUserApplications")]
+    partial class AddUserApplications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -538,48 +541,6 @@ namespace RubacCore.Migrations
                     b.ToTable("Centres", (string)null);
                 });
 
-            modelBuilder.Entity("RubacCore.Models.Permission", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<string>("Application")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Name")
-                        .IsUnique();
-
-                    b.ToTable("Permissions", (string)null);
-                });
-
-            modelBuilder.Entity("RubacCore.Models.RolePermission", b =>
-                {
-                    b.Property<long>("RoleId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("PermissionId")
-                        .HasColumnType("bigint");
-
-                    b.HasKey("RoleId", "PermissionId");
-
-                    b.HasIndex("PermissionId");
-
-                    b.ToTable("RolePermissions", (string)null);
-                });
-
             modelBuilder.Entity("RubacCore.Models.UserApplication", b =>
                 {
                     b.Property<long>("UserId")
@@ -700,25 +661,6 @@ namespace RubacCore.Migrations
                     b.Navigation("Parent");
                 });
 
-            modelBuilder.Entity("RubacCore.Models.RolePermission", b =>
-                {
-                    b.HasOne("RubacCore.Models.Permission", "Permission")
-                        .WithMany("RolePermissions")
-                        .HasForeignKey("PermissionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("RubacCore.Models.ApplicationRole", "Role")
-                        .WithMany("RolePermissions")
-                        .HasForeignKey("RoleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Permission");
-
-                    b.Navigation("Role");
-                });
-
             modelBuilder.Entity("RubacCore.Models.UserApplication", b =>
                 {
                     b.HasOne("RubacCore.Models.ApplicationUser", "User")
@@ -763,8 +705,6 @@ namespace RubacCore.Migrations
 
             modelBuilder.Entity("RubacCore.Models.ApplicationRole", b =>
                 {
-                    b.Navigation("RolePermissions");
-
                     b.Navigation("UserRoles");
                 });
 
@@ -782,11 +722,6 @@ namespace RubacCore.Migrations
                     b.Navigation("Children");
 
                     b.Navigation("UserCentres");
-                });
-
-            modelBuilder.Entity("RubacCore.Models.Permission", b =>
-                {
-                    b.Navigation("RolePermissions");
                 });
 #pragma warning restore 612, 618
         }

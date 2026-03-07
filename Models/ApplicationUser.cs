@@ -18,5 +18,8 @@ public class ApplicationUser : IdentityUser<long>
     public ICollection<ApplicationUserRole> UserRoles   { get; set; } = [];
 
     // ── Centre assignments ─────────────────────────────────────────────────
-    public ICollection<UserCentre> UserCentres { get; set; } = [];
+    public ICollection<UserCentre>      UserCentres      { get; set; } = [];
+
+    // ── Application access ────────────────────────────────────────────────
+    public ICollection<UserApplication> UserApplications { get; set; } = [];
 }

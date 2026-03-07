@@ -21,7 +21,7 @@ public class AuditController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] int     page     = 1,
-        [FromQuery] int     pageSize = 25,
+        [FromQuery] int     pageSize = 10,
         [FromQuery] string? actor    = null,
         [FromQuery] string? entity   = null,
         [FromQuery] string? action   = null,

@@ -51,4 +51,9 @@ public interface IUserRepository
 
     /// <summary>Permanently remove a user and all their Identity data from the database.</summary>
     Task<bool> DeleteAsync(long id);
+
+    // ── Application access ────────────────────────────────────────────────
+    Task<IEnumerable<string>> GetApplicationsAsync(long userId);
+    Task<bool> AssignApplicationAsync(long userId, string clientId);
+    Task<bool> RemoveApplicationAsync(long userId, string clientId);
 }

@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using RubacCore.Data;
 using RubacCore.Models;
 
 namespace RubacCore.Workers;
@@ -39,6 +41,7 @@ public class DataSeedWorker : IHostedService
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<ApplicationRole>>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var db          = scope.ServiceProvider.GetRequiredService<RubacDbContext>();
 
         // ── Default roles ──────────────────────────────────────────
         // Each role is scoped to an Application so multiple apps can have
@@ -50,10 +53,10 @@ public class DataSeedWorker : IHostedService
         // under Application = "Dashboard" to make that explicit.
         var roles = new[]
         {
-            // Application = null → included in tokens for ANY client.
-            // SuperAdmin manages the auth server itself; scoping it to "RubacCore"
-            // would make GetRolesForClientAsync strip it from rubac-admin tokens.
-            new ApplicationRole { Name = "SuperAdmin",  Description = "Manages users, roles and OAuth2 clients in RubacCore", Application = null },
+            // Application = "RubacCore" → only included in tokens for the client
+            // whose client_id is "RubacCore" (the RulesBacAdmin SPA).
+            // This prevents the SuperAdmin role from leaking into Dashboard or other app tokens.
+            new ApplicationRole { Name = "SuperAdmin",  Description = "Manages users, roles and OAuth2 clients in RubacCore", Application = "RubacCore" },
 
             // Dashboard suite roles — enforced server-side by DashboardCore policies
             // AND client-side by Angular guards / template conditionals.
@@ -82,9 +85,6 @@ public class DataSeedWorker : IHostedService
         }
 
         // ── Default admin user ─────────────────────────────────────
-        // This user gets both SuperAdmin (manages RubacCore) and Admin (full
-        // access to DashboardCore). In production you should change the password
-        // immediately and ideally delete this seeded account.
         const string adminEmail    = "admin@rubac.local";
         const string adminPassword = "Admin@1234";
 
@@ -113,6 +113,66 @@ public class DataSeedWorker : IHostedService
                     string.Join(", ", result.Errors.Select(e => e.Description)));
             }
         }
+
+        // ── Default permissions ────────────────────────────────────
+        // Permissions follow "resource:action" naming and are scoped to an
+        // Application that matches the Role.Application field.
+        //
+        // Default assignment matrix:
+        //   SuperAdmin  → rubac:manage-users, rubac:manage-roles
+        //   Admin       → dashboard:read, dashboard:write, dashboard:admin
+        //   Manager     → dashboard:read, dashboard:write
+        //   Consultant  → dashboard:read
+        var defaultPermissions = new[]
+        {
+            new Permission { Name = "rubac:manage-users", Description = "Create, update and deactivate users in RubacCore", Application = "RubacCore" },
+            new Permission { Name = "rubac:manage-roles", Description = "Create, update and assign roles in RubacCore",      Application = "RubacCore" },
+            new Permission { Name = "dashboard:read",     Description = "View data in the Dashboard application",            Application = "Dashboard" },
+            new Permission { Name = "dashboard:write",    Description = "Create and update records in Dashboard",            Application = "Dashboard" },
+            new Permission { Name = "dashboard:admin",    Description = "Admin-level operations in Dashboard",               Application = "Dashboard" },
+        };
+
+        foreach (var perm in defaultPermissions)
+        {
+            if (!await db.Permissions.AnyAsync(p => p.Name == perm.Name))
+            {
+                db.Permissions.Add(perm);
+                _logger.LogInformation("Seeded permission: {Perm} ({App})", perm.Name, perm.Application);
+            }
+        }
+        await db.SaveChangesAsync();
+
+        // ── Assign permissions to roles ────────────────────────────
+        // Look up each role by name, then assign the matching permissions
+        // using the join table. Idempotent: skip if already assigned.
+        var assignmentMap = new Dictionary<string, string[]>
+        {
+            ["SuperAdmin"] = ["rubac:manage-users", "rubac:manage-roles"],
+            ["Admin"]      = ["dashboard:read", "dashboard:write", "dashboard:admin"],
+            ["Manager"]    = ["dashboard:read", "dashboard:write"],
+            ["Consultant"] = ["dashboard:read"],
+        };
+
+        foreach (var (roleName, permNames) in assignmentMap)
+        {
+            var roleEntity = await db.Roles.FirstOrDefaultAsync(r => r.Name == roleName);
+            if (roleEntity is null) continue;
+
+            foreach (var permName in permNames)
+            {
+                var permEntity = await db.Permissions.FirstOrDefaultAsync(p => p.Name == permName);
+                if (permEntity is null) continue;
+
+                var already = await db.RolePermissions
+                    .AnyAsync(rp => rp.RoleId == roleEntity.Id && rp.PermissionId == permEntity.Id);
+                if (!already)
+                {
+                    db.RolePermissions.Add(new RolePermission { RoleId = roleEntity.Id, PermissionId = permEntity.Id });
+                    _logger.LogInformation("Assigned {Perm} → {Role}", permName, roleName);
+                }
+            }
+        }
+        await db.SaveChangesAsync();
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

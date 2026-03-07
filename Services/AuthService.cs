@@ -78,6 +78,19 @@ public class AuthService : IAuthService
             .ToListAsync();
     }
 
+    public async Task<IEnumerable<string>> GetPermissionsForClientAsync(long userId, string clientId)
+    {
+        // Walk: UserRoles → Roles (scoped to clientId) → RolePermissions → Permissions
+        return await _db.UserRoles
+            .Where(ur => ur.UserId == userId)
+            .Join(_db.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => r)
+            .Where(r => r.Application == null || r.Application == clientId)
+            .Join(_db.RolePermissions, r => r.Id, rp => rp.RoleId, (r, rp) => rp)
+            .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => p.Name)
+            .Distinct()
+            .ToListAsync();
+    }
+
     public async Task<UserDto?> GetUserByNameAsync(string userName)
     {
         var user = await _userManager.FindByNameAsync(userName);

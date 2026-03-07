@@ -41,6 +41,23 @@ public record RoleDto(
     string? Application
 );
 
+public record PermissionDto(
+    long Id,
+    string Name,
+    string? Description,
+    string Application
+);
+
+public record CreatePermissionDto(
+    string Name,
+    string? Description,
+    string Application
+);
+
+public record AssignPermissionDto(
+    long PermissionId
+);
+
 /// <summary>
 /// Payload for updating a user's profile fields (name, email).
 /// Password is intentionally excluded — use ChangePasswordDto for that.
@@ -78,6 +95,22 @@ public record UpdateRoleDto(string? Description, string? Application);
 public record ChangePasswordDto(
     string? CurrentPassword,   // null when a SuperAdmin resets for someone else
     string NewPassword
+);
+
+/// <summary>
+/// Represents an OAuth2/OIDC application that has been granted to a user.
+/// </summary>
+public record UserApplicationDto(
+    string ClientId,
+    string? DisplayName
+);
+
+/// <summary>
+/// Payload to assign or revoke an application from a user.
+/// </summary>
+public record AssignUserApplicationDto(
+    long   UserId,
+    string ApplicationClientId
 );
 
 /// <summary>

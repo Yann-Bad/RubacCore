@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using RubacCore.Data;
 using RubacCore.Dtos;
 using RubacCore.Interfaces;
 using RubacCore.Models;
@@ -22,15 +23,18 @@ public class UserRepository : IUserRepository
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IAuditService                _audit;
     private readonly IHttpContextAccessor         _http;
+    private readonly RubacDbContext               _db;
 
     public UserRepository(
         UserManager<ApplicationUser> userManager,
         IAuditService audit,
-        IHttpContextAccessor http)
+        IHttpContextAccessor http,
+        RubacDbContext db)
     {
         _userManager = userManager;
         _audit       = audit;
         _http        = http;
+        _db          = db;
     }
 
     private string Actor =>
@@ -256,6 +260,40 @@ public class UserRepository : IUserRepository
             await _audit.LogAsync(Actor, "User", "user.deleted",
                 id.ToString(), $"Username: {user.UserName}");
         return result.Succeeded;
+    }
+
+    // ── Application access ────────────────────────────────────
+
+    public async Task<IEnumerable<string>> GetApplicationsAsync(long userId)
+        => await _db.UserApplications
+            .Where(ua => ua.UserId == userId)
+            .Select(ua => ua.ApplicationClientId)
+            .ToListAsync();
+
+    public async Task<bool> AssignApplicationAsync(long userId, string clientId)
+    {
+        if (!await _userManager.Users.AnyAsync(u => u.Id == userId)) return false;
+        if (await _db.UserApplications.AnyAsync(ua => ua.UserId == userId && ua.ApplicationClientId == clientId))
+            return true; // already assigned — idempotent
+
+        _db.UserApplications.Add(new UserApplication { UserId = userId, ApplicationClientId = clientId });
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync(Actor, "User", "application.assigned",
+            userId.ToString(), $"ClientId: {clientId}");
+        return true;
+    }
+
+    public async Task<bool> RemoveApplicationAsync(long userId, string clientId)
+    {
+        var entry = await _db.UserApplications
+            .FirstOrDefaultAsync(ua => ua.UserId == userId && ua.ApplicationClientId == clientId);
+        if (entry is null) return false;
+
+        _db.UserApplications.Remove(entry);
+        await _db.SaveChangesAsync();
+        await _audit.LogAsync(Actor, "User", "application.removed",
+            userId.ToString(), $"ClientId: {clientId}");
+        return true;
     }
 
     // ── Private helpers ────────────────────────────────────────────

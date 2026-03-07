@@ -28,9 +28,13 @@ namespace RubacCore.Controllers;
 public class UsersController : ControllerBase
 {
     private readonly IUserRepository _userRepository;
+    private readonly IClientService  _clients;
 
-    public UsersController(IUserRepository userRepository)
-        => _userRepository = userRepository;
+    public UsersController(IUserRepository userRepository, IClientService clients)
+    {
+        _userRepository = userRepository;
+        _clients        = clients;
+    }
 
     // ── Queries (SuperAdmin only) ──────────────────────────────────────────────
 
@@ -179,6 +183,44 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> Delete(long id)
     {
         var success = await _userRepository.DeleteAsync(id);
+        return success ? NoContent() : NotFound();
+    }
+
+    // ── Application assignment (SuperAdmin only) ────────────────────────────────
+
+    /// <summary>List the application client IDs this user is authorized to access.</summary>
+    [HttpGet("{id:long}/applications")]
+    [Authorize(Policy = Policies.ManageUsers)]
+    public async Task<IActionResult> GetApplications(long id, CancellationToken ct)
+    {
+        var assignedIds = (await _userRepository.GetApplicationsAsync(id)).ToHashSet();
+        // Enrich with display names from the registered OIDC clients
+        var allClients  = await _clients.GetAllAsync(ct);
+        var result = allClients
+            .Where(c  => assignedIds.Contains(c.ClientId))
+            .Select(c => new UserApplicationDto(c.ClientId, c.DisplayName))
+            .ToList();
+        return Ok(result);
+    }
+
+    /// <summary>Assign an OAuth2/OIDC application to a user.</summary>
+    [HttpPost("{id:long}/applications/{clientId}")]
+    [Authorize(Policy = Policies.ManageUsers)]
+    public async Task<IActionResult> AssignApplication(long id, string clientId, CancellationToken ct)
+    {
+        var client = await _clients.GetByClientIdAsync(clientId, ct);
+        if (client is null) return NotFound(new { error = $"Unknown application '{clientId}'." });
+
+        var success = await _userRepository.AssignApplicationAsync(id, clientId);
+        return success ? Ok(new UserApplicationDto(clientId, client.DisplayName)) : NotFound("User not found.");
+    }
+
+    /// <summary>Remove an OAuth2/OIDC application from a user.</summary>
+    [HttpDelete("{id:long}/applications/{clientId}")]
+    [Authorize(Policy = Policies.ManageUsers)]
+    public async Task<IActionResult> RemoveApplication(long id, string clientId)
+    {
+        var success = await _userRepository.RemoveApplicationAsync(id, clientId);
         return success ? NoContent() : NotFound();
     }
 

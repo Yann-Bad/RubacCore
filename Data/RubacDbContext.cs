@@ -17,9 +17,12 @@ public class RubacDbContext : IdentityDbContext<
 {
     public RubacDbContext(DbContextOptions<RubacDbContext> options) : base(options) { }
 
-    public DbSet<AuditLog>    AuditLogs   { get; set; } = null!;
-    public DbSet<Centre>      Centres     { get; set; } = null!;
-    public DbSet<UserCentre>  UserCentres { get; set; } = null!;
+    public DbSet<AuditLog>         AuditLogs        { get; set; } = null!;
+    public DbSet<Centre>           Centres          { get; set; } = null!;
+    public DbSet<UserCentre>       UserCentres      { get; set; } = null!;
+    public DbSet<UserApplication>  UserApplications { get; set; } = null!;
+    public DbSet<Permission>       Permissions      { get; set; } = null!;
+    public DbSet<RolePermission>   RolePermissions  { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -75,6 +78,39 @@ public class RubacDbContext : IdentityDbContext<
             b.HasOne(uc => uc.Centre)
              .WithMany(c => c.UserCentres)
              .HasForeignKey(uc => uc.CentreId);
+        });
+
+        // ── UserApplication junction ───────────────────────────────
+        builder.Entity<UserApplication>(b =>
+        {
+            b.ToTable("UserApplications");
+            b.HasKey(ua => new { ua.UserId, ua.ApplicationClientId });
+
+            b.HasOne(ua => ua.User)
+             .WithMany(u => u.UserApplications)
+             .HasForeignKey(ua => ua.UserId);
+        });
+
+        // ── Permissions ────────────────────────────────────────────
+        builder.Entity<Permission>(b =>
+        {
+            b.ToTable("Permissions");
+            b.HasIndex(p => p.Name).IsUnique();
+        });
+
+        // ── RolePermission junction ────────────────────────────────
+        builder.Entity<RolePermission>(b =>
+        {
+            b.ToTable("RolePermissions");
+            b.HasKey(rp => new { rp.RoleId, rp.PermissionId });
+
+            b.HasOne(rp => rp.Role)
+             .WithMany(r => r.RolePermissions)
+             .HasForeignKey(rp => rp.RoleId);
+
+            b.HasOne(rp => rp.Permission)
+             .WithMany(p => p.RolePermissions)
+             .HasForeignKey(rp => rp.PermissionId);
         });
     }
 }

@@ -45,10 +45,11 @@ public class AuthController : ControllerBase
 
             var user  = await _authService.GetUserByNameAsync(request.Username!);
             var roles = await _authService.GetRolesForClientAsync(user!.Id, request.ClientId!);
+            var permissions = await _authService.GetPermissionsForClientAsync(user!.Id, request.ClientId!);
             var (centrePrimary, centres) = await _authService.GetUserCentresAsync(user.Id);
             return await BuildSignInResultAsync(user.Id.ToString(), user.UserName,
                                                 user.Email, user.FirstName, user.LastName,
-                                                roles, centrePrimary, centres, request);
+                                                roles, permissions, centrePrimary, centres, request);
         }
 
         // Refresh token flow
@@ -74,10 +75,11 @@ public class AuthController : ControllerBase
             // Re-evaluate roles on every refresh so permission changes take
             // effect without requiring a full re-login.
             var roles = await _authService.GetRolesForClientAsync(user.Id, request.ClientId!);
+            var permissions = await _authService.GetPermissionsForClientAsync(user.Id, request.ClientId!);
             var (centrePrimary, centres) = await _authService.GetUserCentresAsync(user.Id);
             return await BuildSignInResultAsync(user.Id.ToString(), user.UserName,
                                                 user.Email, user.FirstName, user.LastName,
-                                                roles, centrePrimary, centres, request);
+                                                roles, permissions, centrePrimary, centres, request);
         }
 
         throw new InvalidOperationException("The specified grant type is not supported.");
@@ -108,6 +110,7 @@ public class AuthController : ControllerBase
         string userId, string userName, string email,
         string? firstName, string? lastName,
         IEnumerable<string> roles,
+        IEnumerable<string> permissions,
         string? centrePrimary, IEnumerable<string> centres,
         OpenIddictRequest request)
     {
@@ -130,6 +133,11 @@ public class AuthController : ControllerBase
             identity.SetClaims("centres", [.. centreList]);
 
         identity.SetClaims(Claims.Role, [.. roles]);
+
+        var permissionList = permissions.ToList();
+        if (permissionList.Count > 0)
+            identity.SetClaims("permission", [.. permissionList]);
+
         identity.SetScopes(request.GetScopes());
 
         // Resolve the resource servers (audiences) for the granted scopes.
@@ -168,6 +176,9 @@ public class AuthController : ControllerBase
                 yield return Destinations.AccessToken;
                 if (identity.HasScope(Scopes.Roles))
                     yield return Destinations.IdentityToken;
+                yield break;
+            case "permission":
+                yield return Destinations.AccessToken;
                 yield break;
             case "centre_primary":
             case "centres":

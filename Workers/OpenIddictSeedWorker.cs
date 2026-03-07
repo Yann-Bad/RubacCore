@@ -170,10 +170,12 @@ public class OpenIddictSeedWorker : IHostedService
             }
         }, cancellationToken);
 
-        // ── rubac-admin (RulesBacAdmin SPA — public, password + refresh) ────
+        // ── RubacCore (RulesBacAdmin SPA — public, password + refresh) ────────
+        // client_id = "RubacCore" matches ApplicationRole.Application = "RubacCore"
+        // so GetRolesForClientAsync correctly scopes SuperAdmin to this client only.
         await RecreateAppAsync(manager, new OpenIddictApplicationDescriptor
         {
-            ClientId    = "rubac-admin",
+            ClientId    = "RubacCore",
             ClientType  = ClientTypes.Public,
             DisplayName = "RulesBac Admin Frontend",
             Permissions =
