@@ -47,22 +47,23 @@ public class DataSeedWorker : IHostedService
         // Each role is scoped to an Application so multiple apps can have
         // their own "Admin" without overlap.
         //
-        // NOTE: Admin / Manager / Consultant apply to the full Dashboard
-        // suite — both DashboardCore (API authorization policies) and
-        // DashboardFront (UI visibility / route guards). They are stored
-        // under Application = "Dashboard" to make that explicit.
+        // NOTE: Admin / Manager / Consultant are scoped to Application = "dashboard-front"
+        // which MUST match the OAuth2 client_id sent by the Angular SPA in its
+        // token requests. GetRolesForClientAsync and GetPermissionsForClientAsync
+        // both filter roles by clientId, so a mismatch here means no roles/permissions
+        // are emitted in the access token — resulting in empty permission claims and 403s.
         var roles = new[]
         {
-            // Application = "RubacCore" → only included in tokens for the client
-            // whose client_id is "RubacCore" (the RulesBacAdmin SPA).
+            // Application = "RubacCore" → only included in tokens for the RulesBacAdmin SPA.
             // This prevents the SuperAdmin role from leaking into Dashboard or other app tokens.
             new ApplicationRole { Name = "SuperAdmin",  Description = "Manages users, roles and OAuth2 clients in RubacCore", Application = "RubacCore" },
 
-            // Dashboard suite roles — enforced server-side by DashboardCore policies
+            // Dashboard suite roles — scoped to "dashboard-front" (the Angular client_id).
+            // Enforced server-side by DashboardCore permission-claim policies
             // AND client-side by Angular guards / template conditionals.
-            new ApplicationRole { Name = "Admin",       Description = "Full access to Dashboard (API + frontend)",            Application = "Dashboard" },
-            new ApplicationRole { Name = "Manager",     Description = "Create and update in Dashboard (API + frontend)",      Application = "Dashboard" },
-            new ApplicationRole { Name = "Consultant",  Description = "Read-only access to Dashboard (API + frontend)",       Application = "Dashboard" },
+            new ApplicationRole { Name = "Admin",       Description = "Full access to Dashboard (API + frontend)",            Application = "dashboard-front" },
+            new ApplicationRole { Name = "Manager",     Description = "Create and update in Dashboard (API + frontend)",      Application = "dashboard-front" },
+            new ApplicationRole { Name = "Consultant",  Description = "Read-only access to Dashboard (API + frontend)",       Application = "dashboard-front" },
         };
 
         foreach (var role in roles)

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("RubacCore")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8388938c765524dc1ca5020bb53f5f722d6dfcd2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+180e60f97bb767b9c9baf38eee62a20e4b22719e")]
 [assembly: System.Reflection.AssemblyProductAttribute("RubacCore")]
 [assembly: System.Reflection.AssemblyTitleAttribute("RubacCore")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
