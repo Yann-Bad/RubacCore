@@ -45,6 +45,18 @@ public class AuthController : ControllerBase
 
             var user  = await _authService.GetUserByNameAsync(request.Username!);
             var roles = await _authService.GetRolesForClientAsync(user!.Id, request.ClientId!);
+
+            if (!roles.Any())
+                return Forbid(
+                    authenticationSchemes: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+                    properties: new AuthenticationProperties(new Dictionary<string, string?>
+                    {
+                        [OpenIddictServerAspNetCoreConstants.Properties.Error]
+                            = Errors.InvalidGrant,
+                        [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription]
+                            = "Votre compte n'a pas encore de rôle attribué pour cette application. Veuillez contacter votre administrateur."
+                    }));
+
             var permissions = await _authService.GetPermissionsForClientAsync(user!.Id, request.ClientId!);
             var (centrePrimary, centres) = await _authService.GetUserCentresAsync(user.Id);
             return await BuildSignInResultAsync(user.Id.ToString(), user.UserName,

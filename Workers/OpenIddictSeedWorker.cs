@@ -107,6 +107,15 @@ public class OpenIddictSeedWorker : IHostedService
             DisplayName = "RubacCore API access",
             Resources   = { "rubac_api" }
         }, cancellationToken);
+
+        // "grh" — grants access to GRH_Backend API.
+        // The Resources value must match ValidAudience in GRH_Backend's JWT Bearer options.
+        await ForceRecreateScopeAsync(manager, new OpenIddictScopeDescriptor
+        {
+            Name        = "grh",
+            DisplayName = "GRH API access",
+            Resources   = { "grh_api" }
+        }, cancellationToken);
     }
 
     // ── Applications ───────────────────────────────────────────────────
@@ -189,6 +198,30 @@ public class OpenIddictSeedWorker : IHostedService
                 Permissions.Scopes.Email,
                 Permissions.Scopes.Roles,
                 Permissions.Prefixes.Scope + "rubac",         // rubac_api audience in the token
+                Permissions.Prefixes.Scope + "offline_access",
+            }
+        }, cancellationToken);
+
+        // ── grh-frontend (Angular GRH SPA — public, password + refresh) ─────────
+        // Public client: no secret. Requests the "grh" scope so GRH_Backend tokens
+        // carry aud = "grh_api", which GRH_Backend validates via JWT Bearer Authority.
+        await RecreateAppAsync(manager, new OpenIddictApplicationDescriptor
+        {
+            ClientId    = "grh-frontend",
+            ClientType  = ClientTypes.Public,
+            DisplayName = "GRH Frontend",
+            Permissions =
+            {
+                Permissions.Endpoints.Token,
+                Permissions.Endpoints.Logout,
+                Permissions.GrantTypes.Password,
+                Permissions.GrantTypes.RefreshToken,
+                Permissions.Prefixes.Scope + "openid",
+                Permissions.Scopes.Profile,
+                Permissions.Scopes.Email,
+                Permissions.Scopes.Roles,
+                Permissions.Prefixes.Scope + "grh",            // grh_api audience in the token
+                Permissions.Prefixes.Scope + "rubac",          // rubac_api audience — allows calling RubacCore user-listing endpoints
                 Permissions.Prefixes.Scope + "offline_access",
             }
         }, cancellationToken);

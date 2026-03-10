@@ -32,8 +32,20 @@ public class LdapService : ILdapService
                 // Step 2 — search for attributes using a service account (or the user itself)
                 using var searchConn = CreateConnection();
                 if (!string.IsNullOrEmpty(_settings.ServiceAccount))
-                    searchConn.Bind(new NetworkCredential(
-                        _settings.ServiceAccount, _settings.ServicePassword));
+                {
+                    try
+                    {
+                        searchConn.Bind(new NetworkCredential(
+                            _settings.ServiceAccount, _settings.ServicePassword));
+                    }
+                    catch (LdapException ex)
+                    {
+                        _logger.LogWarning(
+                            "Service account bind failed (code {Code}): {Msg}. Falling back to user credentials for attribute search.",
+                            ex.ErrorCode, ex.Message);
+                        searchConn.Bind(new NetworkCredential(upn, password));
+                    }
+                }
                 else
                     searchConn.Bind(new NetworkCredential(upn, password));
 

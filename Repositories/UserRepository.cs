@@ -51,9 +51,22 @@ public class UserRepository : IUserRepository
         return ToDto(user, roles);
     }
 
-    public async Task<IEnumerable<UserDto>> GetAllAsync()
+    public async Task<IEnumerable<UserDto>> GetAllAsync(string? clientId = null)
     {
-        var users  = await _userManager.Users.ToListAsync();
+        var query = _userManager.Users.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            // Filter by role membership: a user belongs to an application if they have
+            // at least one role whose Application field matches the clientId.
+            // This works even before UserApplications is populated.
+            var usersWithRole = _db.Set<ApplicationUserRole>()
+                .Where(ur => ur.Role!.Application == clientId)
+                .Select(ur => ur.UserId);
+            query = query.Where(u => usersWithRole.Contains(u.Id));
+        }
+
+        var users  = await query.OrderBy(u => u.UserName).ToListAsync();
         var result = new List<UserDto>();
         foreach (var user in users)
         {
@@ -63,9 +76,18 @@ public class UserRepository : IUserRepository
         return result;
     }
 
-    public async Task<PagedResult<UserDto>> GetPagedAsync(int page, int pageSize, string? search, string? sortBy = "userName", string? sortDir = "asc")
+    public async Task<PagedResult<UserDto>> GetPagedAsync(int page, int pageSize, string? search, string? sortBy = "userName", string? sortDir = "asc", string? clientId = null)
     {
         var query = _userManager.Users.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            // Same role-based filter as GetAllAsync.
+            var usersWithRole = _db.Set<ApplicationUserRole>()
+                .Where(ur => ur.Role!.Application == clientId)
+                .Select(ur => ur.UserId);
+            query = query.Where(u => usersWithRole.Contains(u.Id));
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {

@@ -48,8 +48,20 @@ public class UsersController : ControllerBase
         [FromQuery] int     pageSize = 10,
         [FromQuery] string? search   = null,
         [FromQuery] string? sortBy   = "userName",
-        [FromQuery] string? sortDir  = "asc")
-        => Ok(await _userRepository.GetPagedAsync(page, pageSize, search, sortBy, sortDir));
+        [FromQuery] string? sortDir  = "asc",
+        [FromQuery] string? clientId = null)
+        => Ok(await _userRepository.GetPagedAsync(page, pageSize, search, sortBy, sortDir, clientId));
+
+    /// <summary>
+    /// Return all users (unpaginated), optionally filtered by application clientId.
+    /// Intended for lightweight dropdowns in resource-server frontends.
+    /// Requires authentication only — no SuperAdmin role — because it returns
+    /// minimal data filtered to a specific application's user population.
+    /// </summary>
+    [HttpGet("all")]
+    [Authorize] // any authenticated user may fetch the dropdown list
+    public async Task<IActionResult> GetAllUnpaginated([FromQuery] string? clientId = null)
+        => Ok(await _userRepository.GetAllAsync(clientId));
 
     /// <summary>
     /// Get a single user by id. SuperAdmin can fetch anyone;
