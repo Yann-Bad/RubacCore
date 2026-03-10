@@ -52,7 +52,7 @@ public class AuthController : ControllerBase
                     properties: new AuthenticationProperties(new Dictionary<string, string?>
                     {
                         [OpenIddictServerAspNetCoreConstants.Properties.Error]
-                            = Errors.InvalidGrant,
+                            = Errors.AccessDenied,
                         [OpenIddictServerAspNetCoreConstants.Properties.ErrorDescription]
                             = "Votre compte n'a pas encore de rôle attribué pour cette application. Veuillez contacter votre administrateur."
                     }));
