@@ -55,9 +55,25 @@ builder.Services.AddOpenIddict()
                .AllowRefreshTokenFlow()
                .AllowAuthorizationCodeFlow();
 
-        // Dev: auto-generated ephemeral keys — use X509 certs in production
-        options.AddDevelopmentEncryptionCertificate()
-               .AddDevelopmentSigningCertificate();
+        // Dev: load or generate RSA keys persisted as PFX files on disk.
+        // Avoids macOS Keychain prompts (unlike AddDevelopmentSigningCertificate)
+        // and survives `dotnet watch` restarts (unlike AddEphemeralSigningKey).
+        // Production: replace with real certificates from a vault or store.
+        if (builder.Environment.IsDevelopment())
+        {
+            var keysDir = Path.Combine(builder.Environment.ContentRootPath, "keys");
+            Directory.CreateDirectory(keysDir);
+
+            options.AddEncryptionCertificate(LoadOrCreateSelfSigned(
+                       Path.Combine(keysDir, "encryption-dev.pfx"), "CN=RubacCore Encryption Dev"))
+                   .AddSigningCertificate(LoadOrCreateSelfSigned(
+                       Path.Combine(keysDir, "signing-dev.pfx"), "CN=RubacCore Signing Dev"));
+        }
+        else
+        {
+            options.AddDevelopmentEncryptionCertificate()
+                   .AddDevelopmentSigningCertificate();
+        }
 
         // Emit access tokens as plain signed JWTs (JWS) rather than encrypted
         // JWEs. This is required for resource servers (e.g. DashboardCore) to
@@ -101,6 +117,7 @@ builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<ICentreService, CentreService>();
 builder.Services.AddScoped<ILdapService, LdapService>();
+builder.Services.AddScoped<ILdapWriteService, LdapWriteService>();
 builder.Services.Configure<LdapSettings>(builder.Configuration.GetSection("Ldap"));
 builder.Services.AddSingleton<IPresenceService, PresenceService>();
 
@@ -147,6 +164,9 @@ builder.Services.AddAuthorization(options =>
 
     options.AddPolicy(Policies.SelfService, policy =>
         policy.RequireAuthenticatedUser());
+
+    options.AddPolicy(Policies.ManageAD, policy =>
+        policy.RequireRole("SuperAdmin"));
 });
 
 // ── 8. CORS ──────────────────────────────────────────────────────────
@@ -191,7 +211,33 @@ app.Use(async (ctx, next) =>
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// ── Active Centre resolution (must come AFTER auth) ──────────────────────
+// Reads X-Centre-ID header from the frontend and injects "ActiveCentreId" 
+// claim into the principal. Controllers read it via:
+//   User.FindFirstValue("ActiveCentreId")
+app.UseMiddleware<RubacCore.Middleware.ActiveCentreMiddleware>();
+
 app.MapControllers();
 app.MapHub<PresenceHub>("/hubs/presence");
 
 app.Run();
+
+// ── Helper: file-based self-signed certificate for dev ─────────────
+static System.Security.Cryptography.X509Certificates.X509Certificate2
+    LoadOrCreateSelfSigned(string pfxPath, string subjectName)
+{
+    if (File.Exists(pfxPath))
+        return System.Security.Cryptography.X509Certificates.X509CertificateLoader
+            .LoadPkcs12FromFile(pfxPath, null);
+
+    using var rsa = System.Security.Cryptography.RSA.Create(2048);
+    var req = new System.Security.Cryptography.X509Certificates.CertificateRequest(
+        subjectName, rsa, System.Security.Cryptography.HashAlgorithmName.SHA256,
+        System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+    var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(5));
+    File.WriteAllBytes(pfxPath, cert.Export(
+        System.Security.Cryptography.X509Certificates.X509ContentType.Pfx));
+    return System.Security.Cryptography.X509Certificates.X509CertificateLoader
+        .LoadPkcs12FromFile(pfxPath, null);
+}

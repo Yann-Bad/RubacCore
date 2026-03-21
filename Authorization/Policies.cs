@@ -33,4 +33,10 @@ public static class Policies
     /// Assigned to: any authenticated user.
     /// </summary>
     public const string SelfService = "SelfService";
+
+    /// <summary>
+    /// Full control over Active Directory accounts (create, update, suspend, delete).
+    /// Assigned to: SuperAdmin — only IT administrators should be granted this policy.
+    /// </summary>
+    public const string ManageAD = "ManageAD";
 }

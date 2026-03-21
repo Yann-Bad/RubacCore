@@ -1,8 +1,11 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OpenIddict.Abstractions;
 using RubacCore.Authorization;
 using RubacCore.Dtos;
 using RubacCore.Interfaces;
+using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace RubacCore.Controllers;
 
@@ -34,6 +37,32 @@ public class CentresController : ControllerBase
     {
         var tree = await _centreService.GetTreeAsync();
         return tree is null ? NoContent() : Ok(tree);
+    }
+
+    // ── GET /api/centres/my ──────────────────────────────────────
+    /// <summary>
+    /// Returns all centres the current user has access to, with their
+    /// primary and active flags — used by the frontend centre-switcher.
+    ///
+    /// Data sources:
+    ///   • UserCentre join table — all assigned centres (IsPrimary flag)
+    ///   • X-Centre-ID header    — overrides the active centre for this session
+    ///
+    /// Requires only authentication (no admin role needed — every user
+    /// can see their own assigned centres).
+    /// </summary>
+    [HttpGet("my")]
+    public async Task<IActionResult> GetMyCentres()
+    {
+        var userIdStr = User.GetClaim(Claims.Subject);
+        if (!long.TryParse(userIdStr, out var userId))
+            return Unauthorized();
+
+        // Read the active centre override from the middleware-injected claim
+        int.TryParse(User.FindFirstValue("ActiveCentreId"), out var activeCentreId);
+
+        var result = await _centreService.GetUserCentreSwitchAsync(userId, activeCentreId);
+        return Ok(result);
     }
 
     // ── GET /api/centres/{id} ─────────────────────────────────────

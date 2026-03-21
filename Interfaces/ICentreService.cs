@@ -15,6 +15,14 @@ public interface ICentreService
     /// <summary>Returns the Centre codes assigned to a user (primary first).</summary>
     Task<(string? Primary, IEnumerable<string> All)> GetUserCentresAsync(long userId);
 
+    /// <summary>
+    /// Returns full centre details for the centre-switcher dropdown.
+    /// Resolves the user's assigned centres from UserCentre and marks
+    /// the primary + active flags based on <paramref name="activeCentreId"/>
+    /// (from X-Centre-ID header).
+    /// </summary>
+    Task<UserCentresResponseDto> GetUserCentreSwitchAsync(long userId, int activeCentreId);
+
     Task<PagedResult<CentreUserDto>> GetCentreUsersAsync(int centreId, int page, int pageSize, string? search);
     Task<IEnumerable<UserCentreAssignmentDto>> GetCentresForUserAsync(long userId);
     Task AssignUserCentreAsync(AssignUserCentreRequest request);

@@ -160,6 +160,62 @@ public class CentreService : ICentreService
         return (primary, all);
     }
 
+    /// <summary>
+    /// Returns the full centre-switcher response for the given user.
+    ///
+    /// Steps:
+    ///   1. Load all UserCentre links with Include(Centre)
+    ///   2. Map to CentreSwitchItemDto (code, name, subdivision, isPrimary)
+    ///   3. Determine active centre:
+    ///      a. If <paramref name="activeCentreId"/> > 0 AND exists in the list → use it
+    ///      b. Otherwise fall back to the primary centre
+    ///   4. Mark the active flag on the matching item
+    /// </summary>
+    public async Task<UserCentresResponseDto> GetUserCentreSwitchAsync(long userId, int activeCentreId)
+    {
+        var links = await _db.UserCentres
+            .AsNoTracking()
+            .Where(uc => uc.UserId == userId)
+            .Include(uc => uc.Centre)
+            .OrderByDescending(uc => uc.IsPrimary)
+            .ThenBy(uc => uc.Centre.Name)
+            .ToListAsync();
+
+        var centres = links
+            .Where(uc => uc.Centre != null && uc.Centre.IsActive)
+            .Select(uc => new CentreSwitchItemDto
+            {
+                Id          = uc.Centre.Id,
+                Code        = uc.Centre.Code ?? "",
+                Name        = uc.Centre.Name,
+                Subdivision = uc.Centre.SubdivisionAdministrative.ToString(),
+                IsPrimary   = uc.IsPrimary,
+                IsActive    = false, // set below
+            })
+            .ToList();
+
+        // Determine the default (primary) centre
+        var defaultCentre = centres.FirstOrDefault(c => c.IsPrimary);
+
+        // Determine the active centre:
+        //   - User override (X-Centre-ID header → activeCentreId) if it exists in the list
+        //   - Otherwise the primary centre
+        var resolvedActiveId = activeCentreId > 0 && centres.Any(c => c.Id == activeCentreId)
+            ? activeCentreId
+            : defaultCentre?.Id ?? 0;
+
+        // Mark the active flag
+        foreach (var c in centres)
+            c.IsActive = c.Id == resolvedActiveId;
+
+        return new UserCentresResponseDto
+        {
+            DefaultCentre  = defaultCentre,
+            ActiveCentreId = resolvedActiveId,
+            Centres        = centres,
+        };
+    }
+
     public async Task AssignUserCentreAsync(AssignUserCentreRequest req)
     {
         // If setting this as primary, clear any existing primary

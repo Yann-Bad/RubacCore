@@ -22,4 +22,11 @@ public class LdapSettings
 
     /// <summary>Role assigned to new AD users on their first login.</summary>
     public string DefaultRole     { get; set; } = "User";
+
+    /// <summary>
+    /// Target OU (Distinguished Name) where new user objects are created.
+    /// Example: "OU=Utilisateurs,DC=cnss,DC=cd"
+    /// Defaults to the SearchBase if left empty (creates in the root DC).
+    /// </summary>
+    public string WriteOUPath     { get; set; } = "";
 }
